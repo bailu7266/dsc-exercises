@@ -1,5 +1,7 @@
 # Executables without extension
+*
 !*.*
+!*/
 
 # Prerequisites
 *.d
