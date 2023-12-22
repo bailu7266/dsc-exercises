@@ -27,7 +27,7 @@ const int BUFF_SIZE = 128;
 
 const int TWO = 2;
 
-enum EV_STATUS { unvisited = 0, visited, discovery, back, cross };
+enum EV_STATUS { unvisited = 0, visited, discovery, back, cross, waiting };
 
 class CUGEdge
 {
@@ -35,6 +35,8 @@ class CUGEdge
     EV_STATUS e_status;
 
 public:
+
+#ifndef USE_EDGE_MAP
 #ifdef USE_UNORDERED
     struct HashFunc
     {
@@ -61,6 +63,7 @@ public:
     };
 
 #endif  // USE_UNORDERED
+#endif  // USE_EDGE_MAP
 
     CUGEdge(int v1, int v2) : m_v1(v1), m_v2(v2), e_status(EV_STATUS::unvisited) {}
 
@@ -96,24 +99,26 @@ using EDGE_SET = unordered_set<CUGEdge, CUGEdge::HashFunc>;
 using EDGE_SET = set<CUGEdge, CUGEdge::LessOperator>;
 #endif  // USE_UNORDERED
 
+using AD_TABLE = unordered_set<CUGEdge*>;
 class CGVertex
 {
-    EDGE_SET m_ad_table;
+    AD_TABLE m_ad_table;
     // Adjacent table, should be a subset of edges
     EV_STATUS v_status;
 
 public:
     CGVertex() : v_status(EV_STATUS::unvisited) {}
 
-    void incidence_add(CUGEdge& edge)
+    void incidence_add(CUGEdge* edge)
     {
         m_ad_table.insert(edge);
     }
 
-    EDGE_SET& incident_edges() { return m_ad_table; }
+    AD_TABLE& incident_edges() { return m_ad_table; }
 
     void set_status(EV_STATUS s) { v_status = s; };
     bool is_visited() { return (v_status == EV_STATUS::visited); }
+    bool is_waiting() { return (v_status == EV_STATUS::waiting); }
 };
 
 #ifdef USE_UNORDERED
@@ -125,13 +130,15 @@ using VERTICE_MAP = map<int, CGVertex>;
 class CUGraph
 {
     using DFS_VISIT = function<void(int, void**)>;
-    using DFS_DISCOVERY = function<void(CUGEdge&, int)>;
-    using DFS_TRAV_BACK = function<void(CUGEdge&, int)>;
+    using DFS_DISCOVERY = function<void(CUGEdge*, int)>;
+    using DFS_TRAV_BACK = function<void(CUGEdge*, int)>;
     using BFS_VISIT = function<void(int, void**)>;
     
     VERTICE_MAP vertices;   // vertices set
+
     EDGE_SET edges;         // undirect graph, edge between to ends is unique
-    vector<CUGEdge> cycle;
+
+    vector<CUGEdge*> cycle;
     int start;          // start point of the loop
     bool done;
 
@@ -155,14 +162,14 @@ public:
 
     void erase_vertice(int v)
     {
-        EDGE_SET& ad_table = vertices[v].incident_edges();
+        AD_TABLE& ad_table = vertices[v].incident_edges();
         for(auto it = ad_table.begin(); it != ad_table.end(); it ++)
         {
-            CUGEdge& e = const_cast<CUGEdge&>(*it);
-            int op_v = e.opposite(v);
-            vertices[op_v].incident_edges().erase(e);
+            CUGEdge* ep = (*it);
+            int op_v = ep->opposite(v);
+            vertices[op_v].incident_edges().erase(ep);
             // erase the edge in the opposite vertice
-            edges.erase(e);
+            edges.erase(*ep);
         }
         
         ad_table.clear();
@@ -177,10 +184,11 @@ public:
         auto result = edges.insert(CUGEdge(v1, v2));
         if (result.second)
         {
+            CUGEdge* ep = &const_cast<CUGEdge&>(*(result.first));
             vertices.insert({v1, CGVertex()});
-            vertices[v1].incidence_add(const_cast<CUGEdge&>(*(result.first)));
+            vertices[v1].incidence_add(ep);
             vertices.insert({v2, CGVertex()});
-            vertices[v2].incidence_add(const_cast<CUGEdge&>(*(result.first)));
+            vertices[v2].incidence_add(ep);
         }
     }
 
@@ -203,18 +211,18 @@ public:
             cycle.pop_back();
     }
 
-    void cycle_traverse_discovery(CUGEdge& e, int v)
+    void cycle_traverse_discovery(CUGEdge* ep, int v)
     {
-        cycle.push_back(e);
+        cycle.push_back(ep);
     }
 
-    void cycle_traverse_back(CUGEdge& e, int v)
+    void cycle_traverse_back(CUGEdge* ep, int v)
     {
         if (!is_done())
         {
             done = true;
-            cycle.push_back(e);
-            start = e.opposite(v);
+            cycle.push_back(ep);
+            start = ep->opposite(v);
         }
     }
 
@@ -234,19 +242,19 @@ public:
 
         dfs_if.visit(v, pp);
 
-        EDGE_SET& ad_tab = vertices[v].incident_edges();
+        AD_TABLE& ad_tab = vertices[v].incident_edges();
         for (auto it = ad_tab.begin(); it != ad_tab.end() && (!is_done()); it ++)
         {
-            CUGEdge& edge = const_cast<CUGEdge&>(*it);
-            if (!edge.is_visited())
+            CUGEdge* ep = (*it);
+            if (!ep->is_visited())
             {
-                edge.set_status(EV_STATUS::visited);
-                int w = edge.opposite(v);
+                ep->set_status(EV_STATUS::visited);
+                int w = ep->opposite(v);
 
                 if (!vertices[w].is_visited())
                 {
-                    edge.set_status(EV_STATUS::discovery);
-                    dfs_if.trav_discovery(edge, v);
+                    ep->set_status(EV_STATUS::discovery);
+                    dfs_if.trav_discovery(ep, v);
                     if (!is_done())
                     {
                         DFS_traversal(w, dfs_if, pp);
@@ -254,8 +262,8 @@ public:
                 }
                 else
                 {
-                    edge.set_status(EV_STATUS::back);
-                    dfs_if.trav_back(edge, v);
+                    ep->set_status(EV_STATUS::back);
+                    dfs_if.trav_back(ep, v);
                 }
             }
         }
@@ -273,12 +281,11 @@ public:
         
         for (auto it = edges.begin(); it != edges.end(); it ++)
         {
-            CUGEdge& e = const_cast<CUGEdge&> (*it);
-            e.set_status(EV_STATUS::unvisited);
+            const_cast<CUGEdge&> (*it).set_status(EV_STATUS::unvisited);
         }
     }
 
-    vector<CUGEdge>& FDS_cycle(int s)
+    vector<CUGEdge*>& FDS_cycle(int s)
     {
         initialize();
         start = s;
@@ -288,8 +295,8 @@ public:
         dfs_if.start_visit = [this](int v, void** pp) { };
         dfs_if.visit = [this](int v, void** pp) { };
         dfs_if.finish_visit = [this](int v, void** pp) { this->cycle_finish_visit(v, pp); };
-        dfs_if.trav_discovery = [this](CUGEdge& e, int v) { this->cycle_traverse_discovery(e, v); };
-        dfs_if.trav_back = [this](CUGEdge& e, int v) { this->cycle_traverse_back(e, v); };
+        dfs_if.trav_discovery = [this](CUGEdge* e, int v) { this->cycle_traverse_discovery(e, v); };
+        dfs_if.trav_back = [this](CUGEdge* e, int v) { this->cycle_traverse_back(e, v); };
 
         DFS_traversal(s, dfs_if, NULL);
            
@@ -298,7 +305,7 @@ public:
             auto it = cycle.begin();
             while(it != cycle.end())
             {
-                if ((*(it ++)).is_incident_on(start)) break;
+                if ((*(it ++))->is_incident_on(start)) break;
             }
             cycle.erase(cycle.begin(), it);
         }
@@ -315,15 +322,14 @@ public:
         dfs_if.start_visit = [this](int v, void** pp) { };
         dfs_if.visit = [this](int v, void** pp) { this->visit_print(v, pp); };
         dfs_if.finish_visit = [this](int v, void** pp) { };
-        dfs_if.trav_discovery = [this](CUGEdge&e, int v) { };
-        dfs_if.trav_back = [this](CUGEdge& e, int v) { };
+        dfs_if.trav_discovery = [this](CUGEdge* e, int v) { };
+        dfs_if.trav_back = [this](CUGEdge* e, int v) { };
 
         DFS_traversal(s, dfs_if, pp);
     }
 
     void BFS_traversal(int root, BFS_VISIT bfs_visit, void** pp)
     {
-        int level = 0;
         vector<int> level_0, level_1;     // current and next level
         
         level_0.push_back(root);
@@ -338,21 +344,26 @@ public:
 
                 bfs_visit(vi, pp);
 
-                EDGE_SET& edges = vertices[vi].incident_edges();
+                AD_TABLE& edges = vertices[vi].incident_edges();
                 for (auto ite = edges.begin(); ite != edges.end(); ite ++)
                 {
-                    CUGEdge& e = const_cast<CUGEdge&>(*ite);
-                    if (!e.is_visited())
+                    CUGEdge* ep = (*ite);
+                    if (!ep->is_visited())
                     {
-                        int op_v = e.opposite(vi);
+                        int op_v = ep->opposite(vi);
                         if (!vertices[op_v].is_visited())
                         {
-                            e.set_status(EV_STATUS::discovery);
-                            level_1.push_back(op_v);
+                            ep->set_status(EV_STATUS::discovery);
+                            // if the vertice is not in the waiting list
+                            if (!vertices[op_v].is_waiting())
+                            {
+                                vertices[op_v].set_status(EV_STATUS::waiting);
+                                level_1.push_back(op_v);
+                            }
                         }
                         else
                         {
-                            e.set_status(EV_STATUS::cross);
+                            ep->set_status(EV_STATUS::cross);
                         }
                     }
 
