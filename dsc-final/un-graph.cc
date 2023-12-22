@@ -1,4 +1,4 @@
-#define USE_UNORDERED
+// #define USE_UNORDERED
 
 #include <iostream>
 #include <string>
@@ -36,14 +36,14 @@ class CUGEdge
 
 public:
 
-#ifndef USE_EDGE_MAP
 #ifdef USE_UNORDERED
     struct HashFunc
     {
         size_t operator () (const CUGEdge& edge) const
         {
-            hash<int> hasher;
-            return hasher(edge.m_v1) ^ hasher(edge.m_v2);
+            size_t hash1 = hash<int>{}(edge.m_v1);
+            size_t hash2 = hash<int>{}(edge.m_v2);
+            return hash1 ^ hash2;
         }
     };
 
@@ -58,12 +58,11 @@ public:
     {
         bool operator()(const CUGEdge& e1, const CUGEdge& e2) const
         {
-            return (e1.m_v1 + e1.m_v2) < (e2.m_v1 + e2.m_v2);
+            return tie(e1.m_v1, e1.m_v2) < tie(e2.m_v1, e2.m_v2);
         }
     };
 
 #endif  // USE_UNORDERED
-#endif  // USE_EDGE_MAP
 
     CUGEdge(int v1, int v2) : m_v1(v1), m_v2(v2), e_status(EV_STATUS::unvisited) {}
 
@@ -95,11 +94,12 @@ public:
 
 #ifdef USE_UNORDERED
 using EDGE_SET = unordered_set<CUGEdge, CUGEdge::HashFunc>;
+using AD_TABLE = unordered_set<CUGEdge*>;
 #else
 using EDGE_SET = set<CUGEdge, CUGEdge::LessOperator>;
+using AD_TABLE = set<CUGEdge*>;
 #endif  // USE_UNORDERED
 
-using AD_TABLE = unordered_set<CUGEdge*>;
 class CGVertex
 {
     AD_TABLE m_ad_table;
@@ -138,8 +138,6 @@ class CUGraph
 
     EDGE_SET edges;         // undirect graph, edge between to ends is unique
 
-    vector<CUGEdge*> cycle;
-    int start;          // start point of the loop
     bool done;
 
 public:
@@ -189,40 +187,6 @@ public:
             vertices[v1].incidence_add(ep);
             vertices.insert({v2, CGVertex()});
             vertices[v2].incidence_add(ep);
-        }
-    }
-
-    void start_visit(int v, void** pp)
-    {/*
-        cycle.push_back(v);
-
-        if (start == v)
-        {
-            if (cycle.size() > 2)
-            {
-                done = true;
-            }
-        }*/
-    }
-
-    void cycle_finish_visit(int v, void** pp)
-    {
-        if (!cycle.empty())
-            cycle.pop_back();
-    }
-
-    void cycle_traverse_discovery(CUGEdge* ep, int v)
-    {
-        cycle.push_back(ep);
-    }
-
-    void cycle_traverse_back(CUGEdge* ep, int v)
-    {
-        if (!is_done())
-        {
-            done = true;
-            cycle.push_back(ep);
-            start = ep->opposite(v);
         }
     }
 
@@ -285,38 +249,9 @@ public:
         }
     }
 
-    vector<CUGEdge*>& FDS_cycle(int s)
-    {
-        initialize();
-        start = s;
-        cycle.clear();
-
-        DFSInterface dfs_if;
-        dfs_if.start_visit = [this](int v, void** pp) { };
-        dfs_if.visit = [this](int v, void** pp) { };
-        dfs_if.finish_visit = [this](int v, void** pp) { this->cycle_finish_visit(v, pp); };
-        dfs_if.trav_discovery = [this](CUGEdge* e, int v) { this->cycle_traverse_discovery(e, v); };
-        dfs_if.trav_back = [this](CUGEdge* e, int v) { this->cycle_traverse_back(e, v); };
-
-        DFS_traversal(s, dfs_if, NULL);
-           
-        if (!cycle.empty() && s != start)
-        {
-            auto it = cycle.begin();
-            while(it != cycle.end())
-            {
-                if ((*(it ++))->is_incident_on(start)) break;
-            }
-            cycle.erase(cycle.begin(), it);
-        }
-
-        return cycle;
-    }
-
     void FDS_trav_print(int s, void** pp)
     {
         initialize();
-        start = s;
 
         DFSInterface dfs_if;
         dfs_if.start_visit = [this](int v, void** pp) { };
@@ -376,21 +311,10 @@ public:
     void BFS_trav_print(int s, void** pp)
     {
         initialize();
-        start = s;
 
         BFS_VISIT bfs_visit = [this](int v, void** pp) { return this->visit_print(v, pp); };
 
         BFS_traversal(s, bfs_visit, pp);
-    }
-
-    void solution(int s, void** pp)
-    {
-        for (int i = 1; i <= vertices.size(); i ++)
-        {
-            // FDS_cycle(i);
-        }
-
-        FDS_trav_print(s, pp);
     }
 };
 
@@ -458,12 +382,16 @@ int main()
     char* tptr_buff = buff;
 
     graph.FDS_trav_print(0, (void**) &tptr_buff);
-    cout << buff << endl;
+    tptr_buff = buff;
+    while(*tptr_buff == ' ') tptr_buff ++;  // trim head space
+    cout << tptr_buff << endl;
 
     graph.erase_vertice(del_v);
 
     tptr_buff = buff;
 
     graph.BFS_trav_print(0, (void**) &tptr_buff);
-    cout << buff << endl;
+    tptr_buff = buff;
+    while(*tptr_buff == ' ') tptr_buff ++;  // trim head space
+    cout << tptr_buff << endl;
 }
