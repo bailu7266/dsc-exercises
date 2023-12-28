@@ -35,41 +35,45 @@ class CLPHash
     size_t my_hash(T v)
     {
         HASH_FUNC hf;
-        return hf(v) % hash_size;
+        return hf(v);
     }
+
+    function<size_t (int)> lpf = [](int i) -> size_t { return i; };
 
 public:
     CLPHash(int s = 199) : hash_size(s), table(s) {}
     int insert(T v)
     {
-        int i = my_hash(v);
+        int pi = 0;
+        int hki = my_hash(v) % hash_size;
+        int index = hki;
 
-        while(table[i].type != BKT_TYPE::EMPTY)
+        while(table[index].type != BKT_TYPE::EMPTY)
         {
-            i ++;       // linear function: f(pi) = pi
-            if (i >= hash_size)
-                i = 0;      // wrap when > hash_size
+            pi ++;
+            index = (hki + lpf(pi)) % hash_size;
         }
 
-        table[i].val = v;
-        table[i].type = BKT_TYPE::ACTIVE;
+        table[index].val = v;
+        table[index].type = BKT_TYPE::ACTIVE;
 
-        return i;
+        return index;
     }
 
     int find(T v, vector<int>& ps)       // -1: not found
     {
-        int i = my_hash(v);
+        int pi = 0;
+        int hki = my_hash(v) % hash_size;
+        int index = hki; //lpf(0) = 0
         
-        while(table[i].type == BKT_TYPE::ACTIVE)
+        while(table[index].type == BKT_TYPE::ACTIVE)
         {
-            ps.push_back(i);
-            if (table[i].val == v)
-                return i;
+            ps.push_back(index); // Trial position sequence
+            if (table[index].val == v)
+                return index;
 
-            i ++;
-            if (i >= hash_size)
-                i = 0;
+            pi ++;
+            index = (hki + lpf(pi)) % hash_size;
         }
 
         return -1;
