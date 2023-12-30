@@ -24,6 +24,25 @@ int bsa(vector<int>& iv, int low, int high, int k, vector<int>& pv)
     return -1; 
 }
 
+int bsa_rec(vector<int> iv, int low, int high, int key, vector<int>& pv)
+{
+    if (low <= high)
+    {
+        int mid = low + (high - low) / 2;
+
+        pv.push_back(iv[mid]);
+
+        if (iv[mid] > key)
+            return bsa_rec(iv, low, mid - 1, key, pv);
+        else if (iv[mid] < key)
+            return bsa_rec(iv, mid + 1, high, key, pv);
+        else
+            return mid;
+    }
+
+    return -1;
+}
+
 int main()
 {
     string fname_in = "in.txt";
@@ -70,7 +89,7 @@ int main()
     }
 
     vector<int> pv;
-    int ret = bsa(int_v, 0, int_v.size() - 1, s_num, pv);
+    int ret = bsa_rec(int_v, 0, int_v.size() - 1, s_num, pv);
 
     ss.str(string());
     ss.clear();
