@@ -22,7 +22,7 @@ struct AVL_NODE
 template<class T>
 class CAVLTree
 {
-    using VISIT_FUNC = function<void(AVL_NODE<T>*, int&, vector<AVL_NODE<T>*>&)>;
+    using VISIT_FUNC = function<void(AVL_NODE<T>*, int&)>;
 
     AVL_NODE<T>* left_rotate(AVL_NODE<T>* op)
     {
@@ -173,7 +173,7 @@ public:
         if (balance > 1 && get_balance(root->left) >= 0)
             return left_rotate(root);
 
-        if (balance < -1 && get_balance(root-right) <= 0)
+        if (balance < -1 && get_balance(root->right) <= 0)
             return right_rotate(root);
 
         if (balance > 1 && get_balance(root->left) < 0)
@@ -208,27 +208,27 @@ public:
         }
     }
 
-    void inoder_trav(AVL_NODE<T>* root, VISIT_FUNC do_visit, int& total, vector<AVL_NODE<T>*>& nv)
+    void inoder_trav(AVL_NODE<T>* root, VISIT_FUNC do_visit, int& total)
     {
         if (nullptr == root)
             return;
 
-        inoder_trav(root->left, do_visit, total, nv);
+        inoder_trav(root->left, do_visit, total);
 
-        do_visit(root, total, nv);
+        do_visit(root, total);
 
-        inoder_trav(root->right, do_visit, total, nv);
+        inoder_trav(root->right, do_visit, total);
     }
 };
 
 using AVL_STRING_PTR = AVL_NODE<string>*;
 /*
-void do_sum(AVL_NODE<string>* node, int& total, vector<AVL_STRING_PTR>& nv)
+void do_sum(AVL_NODE<string>* node, int& total)
 {
     total += node->count;
 }
 
-void print_node(AVL_NODE<string>* node, int& total, vector<AVL_STRING_PTR>& nv)
+void print_node(AVL_NODE<string>* node, int& total)
 {
     double ratio = 100 * (double) node->count / (double) total;
     char buff[128];
@@ -236,12 +236,6 @@ void print_node(AVL_NODE<string>* node, int& total, vector<AVL_STRING_PTR>& nv)
     cout << buff << endl;
 }
 */
-void do_all_in_one(AVL_NODE<string>* node, int& total, vector<AVL_STRING_PTR>& nv)
-{
-    total += node->count;
-    nv.push_back(node);
-}
-
 string trim_leading_spaces(string line)
 {
     size_t pos_nsp = line.find_first_not_of(' ');
@@ -249,6 +243,17 @@ string trim_leading_spaces(string line)
         return line.substr(pos_nsp);
     
     return "";
+}
+
+void print_tree_stat(const vector<AVL_NODE<string>*> nv, const int t)
+{
+    for(int i = 0; i < nv.size(); i ++)
+    {
+        char buff[64];
+        snprintf(buff, sizeof(buff), "%s %8.4f",
+            nv[i]->data.c_str(), 100 * (double) nv[i]->count / (double) t);
+        cout << buff << endl;
+    }
 }
 
 int main()
@@ -287,19 +292,30 @@ int main()
     int total = 0;
     vector<AVL_STRING_PTR> nodes;
 
-    // avl_tree.inoder_trav(root, &do_sum, total, nodes);
+    // avl_tree.inoder_trav(root, &do_sum, total);
 
-    // avl_tree.inoder_trav(root, &print_node, total, nodes);
+    // avl_tree.inoder_trav(root, &print_node, total);
 
     total = 0;
-
-    avl_tree.inoder_trav(root, &do_all_in_one, total, nodes);
-
-    for(int i = 0; i < nodes.size(); i ++)
+    function<void(AVL_NODE<string>*, int&)> do_all_in_one =
+    [&nodes](AVL_NODE<string>* n, int& t)
     {
-        char buff[64];
-        snprintf(buff, sizeof(buff), "%s %8.4f",
-            nodes[i]->data.c_str(), 100 * (double) nodes[i]->count / (double) total);
-        cout << buff << endl;
-    }
+        t += n->count;
+        nodes.push_back(n);
+    };
+
+    avl_tree.inoder_trav(root, do_all_in_one, total);
+
+    print_tree_stat(nodes, total);
+
+    string del_tree = "Red Alder";
+    cout << "Deleting tree: " << del_tree << endl;    
+    root = avl_tree.erase(root, del_tree);
+
+    total = 0;
+    nodes.clear();
+
+    avl_tree.inoder_trav(root, do_all_in_one, total);
+
+    print_tree_stat(nodes, total);
 }
